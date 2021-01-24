@@ -1,0 +1,9 @@
+[
+  {
+    "name": "simple",
+    "source": "tests/1.s",
+    "input_file": "tests/1.i",
+    "output_file": "tests/1.out"
+  }
+
+]
