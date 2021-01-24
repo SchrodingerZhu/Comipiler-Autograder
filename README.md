@@ -1,4 +1,4 @@
-# Comipiler-Autograder
+# Compiler-Autograder
 
 ## Requirements?
 
