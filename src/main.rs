@@ -12,6 +12,7 @@ use actix_web_actors::ws::WebsocketContext;
 use sha2::Digest;
 use lazy_static::*;
 use structopt::StructOpt;
+use std::process::Stdio;
 
 lazy_static! {
     static ref CONF : Config = Config::from_args();
@@ -25,7 +26,8 @@ struct Runner {
     test_cases: Arc<Vec<TestCase>>,
     file_path: Option<TempDir>,
     docker: Option<String>,
-    checksum: Option<String>
+    checksum: Option<String>,
+    score: usize,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -34,6 +36,7 @@ struct TestCase {
     source: PathBuf,
     input_file: PathBuf,
     output_file: PathBuf,
+    score: usize,
 }
 
 impl<'a> Actor for Runner {
@@ -49,7 +52,7 @@ impl Runner {
         path.push("src.tgz");
         let mut file = File::create(path)?;
         let data = bin.to_vec();
-        let mut       checksum = sha2::Sha512::default();
+        let mut checksum = sha2::Sha512::default();
         checksum.update(&data);
         self.checksum.replace(hex::encode(checksum.finalize()));
         file.write(&data)?;
@@ -70,6 +73,7 @@ impl Runner {
         if std::process::Command::new("docker")
             .arg("start")
             .arg(self.docker.as_ref().unwrap())
+            .stdout(Stdio::null())
             .status()?
             .success() {
             ctx.text("docker started\n");
@@ -84,14 +88,14 @@ impl Runner {
     fn compile(&mut self, ctx: &mut <Self as Actor>::Context) -> anyhow::Result<()> {
         ctx.text("[copy files]");
         std::process::Command::new("docker")
-            .current_dir( self.file_path.as_ref().unwrap().path())
+            .current_dir(self.file_path.as_ref().unwrap().path())
             .arg("cp")
             .arg("src.tgz")
             .arg(format!("{}:/tmp", self.docker.as_ref().unwrap()))
             .status()?;
         ctx.text("[untar files]");
         let untar = std::process::Command::new("docker")
-            .arg( "exec")
+            .arg("exec")
             .arg("-w")
             .arg("/tmp")
             .arg(self.docker.as_ref().unwrap())
@@ -102,7 +106,7 @@ impl Runner {
         ctx.text(format!("finished with {}", untar.status));
         ctx.text("[run cmake]");
         let cmake = std::process::Command::new("docker")
-            .arg( "exec")
+            .arg("exec")
             .arg("-w")
             .arg("/tmp")
             .arg(self.docker.as_ref().unwrap())
@@ -115,7 +119,7 @@ impl Runner {
         ctx.text(String::from_utf8(cmake.stderr)?);
         ctx.text("[build]");
         let build = std::process::Command::new("docker")
-            .arg( "exec")
+            .arg("exec")
             .arg("-w")
             .arg("/tmp")
             .arg(self.docker.as_ref().unwrap())
@@ -139,7 +143,7 @@ impl Runner {
             let b = std::fs::read_to_string(&i.input_file)?;
             let c = std::fs::read_to_string(&i.output_file)?;
             let mut run = std::process::Command::new("docker")
-                .arg( "exec")
+                .arg("exec")
                 .arg("-w")
                 .arg("/tmp")
                 .arg("-i")
@@ -157,7 +161,7 @@ impl Runner {
             let asm = String::from_utf8(output.stdout)?;
             ctx.text(format!("[gcc {}]\n", i.name));
             let mut gcc = std::process::Command::new("docker")
-                .arg( "exec")
+                .arg("exec")
                 .arg("-w")
                 .arg("/tmp")
                 .arg("-i")
@@ -175,11 +179,12 @@ impl Runner {
             gcc.stdin.as_ref().unwrap().flush()?;
             gcc.stdin.take();
             let output = gcc.wait_with_output()?;
-            ctx.text(format!("finished with: {}", output.status));
-            ctx.text(format!("[gcc {} stderr]\n{}", i.name, String::from_utf8(output.stderr)?));
+            ctx.text(format!("finished with {}", output.status));
+            ctx.text(format!("[gcc {} stderr]\n", i.name));
+            ctx.text(String::from_utf8(output.stderr)?);
             ctx.text(format!("[qemu {}]\n", i.name));
             let mut execution = std::process::Command::new("docker")
-                .arg( "exec")
+                .arg("exec")
                 .arg("-w")
                 .arg("/tmp")
                 .arg("-i")
@@ -195,10 +200,15 @@ impl Runner {
             execution.stdin.take();
             let output = execution.wait_with_output()?;
             let result = String::from_utf8(output.stdout)?;
-            ctx.text(format!("[qemu {} return code]\n{}", i.name, output.status));
-            ctx.text(format!("[qemu {} stderr]\n{}", i.name, String::from_utf8(output.stderr)?));
+            ctx.text(format!("[qemu {} return code]", i.name));
+            ctx.text(output.status.to_string());
+            ctx.text(format!("[qemu {} stderr]", i.name));
+            ctx.text(String::from_utf8(output.stderr)?);
             let flag = result.trim() == c.trim();
             results.push(flag);
+            if flag {
+                self.score = self.score + i.score;
+            }
         }
         let mut report = String::new();
         report.push_str("file checksum: ");
@@ -209,15 +219,16 @@ impl Runner {
         report.push_str("\n\n");
 
         for i in 0..results.len() {
-            report.push_str(format!("test #{}, name: {}, success: {}\n", i, self.test_cases[i].name, results[i]).as_str());
+            report.push_str(format!("test #{}, name: {}, score: {}, success: {}\n", i, self.test_cases[i].name,  self.test_cases[i].score, results[i]).as_str());
         }
+        report.push_str(format!("total score: {}\n", self.score).as_str());
         Ok(report)
     }
 
     fn gpg(&mut self, ctx: &mut <Self as Actor>::Context, report: &str) -> anyhow::Result<()> {
         ctx.text("[gpg report]");
         let mut gpg = std::process::Command::new("gpg")
-            .arg( "--clear-sign")
+            .arg("--clear-sign")
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
@@ -231,28 +242,29 @@ impl Runner {
     }
 
     fn clean_up(&mut self) {
-        if let Some (p) = self.file_path.take() {
+        if let Some(p) = self.file_path.take() {
             match std::fs::remove_dir_all(p.path()) {
                 _ => ()
             }
         }
 
-        if let Some(x) = & self.docker {
+        if let Some(x) = &self.docker {
             match std::process::Command::new("docker")
                 .arg("kill")
                 .arg(x)
-            .status() {
+                .stdout(Stdio::null())
+                .status() {
                 _ => ()
             }
             match std::process::Command::new("docker")
                 .arg("rm")
                 .arg(x)
+                .stdout(Stdio::null())
                 .status() {
                 _ => ()
             }
         }
     }
-
 }
 
 
@@ -265,10 +277,10 @@ impl<'a> StreamHandler<Result<ws::Message, ws::ProtocolError>> for Runner {
     ) {
         match msg {
             Ok(ws::Message::Binary(bin)) => match self.recv_file(bin, ctx)
-                .and_then(|_|self.start_docker(ctx))
-                .and_then(|_|self.compile(ctx))
-                .and_then(|_|self.run_cases(ctx))
-                .and_then(|r|self.gpg(ctx, &r)){
+                .and_then(|_| self.start_docker(ctx))
+                .and_then(|_| self.compile(ctx))
+                .and_then(|_| self.run_cases(ctx))
+                .and_then(|r| self.gpg(ctx, &r)) {
                 Ok(_) => {
                     ctx.text("Finished");
                 }
@@ -282,7 +294,14 @@ impl<'a> StreamHandler<Result<ws::Message, ws::ProtocolError>> for Runner {
 }
 
 async fn index(req: HttpRequest, stream: web::Payload) -> Result<HttpResponse, Error> {
-    let actor = Runner { image: CONF.image.clone(), test_cases: TESTS.clone(), file_path: None, docker: None, checksum: None };
+    let actor = Runner {
+        image: CONF.image.clone(),
+        test_cases: TESTS.clone(),
+        file_path: None,
+        docker: None,
+        checksum: None,
+        score: 0,
+    };
     let mut res = ws::handshake(&req)?;
     let resp = res.streaming(WebsocketContext::with_codec(actor, stream, actix_http::ws::Codec::new().max_size(512 * 1024 * 1024)));
     println!("{:?}", resp);
@@ -293,13 +312,13 @@ type TestCases = Vec<TestCase>;
 
 #[derive(structopt::StructOpt)]
 struct Config {
-    #[structopt(short, long, about="path to the json file containing test cases")]
+    #[structopt(short, long, about = "path to the json file containing test cases")]
     tests: PathBuf,
-    #[structopt(short, long, about="docker image name")]
+    #[structopt(short, long, about = "docker image name")]
     image: String,
-    #[structopt(short="l", long, about="listen ip")]
+    #[structopt(short = "l", long, about = "listen ip")]
     ip: std::net::IpAddr,
-    #[structopt(short, long, about="listen port")]
+    #[structopt(short, long, about = "listen port")]
     port: u16,
 }
 

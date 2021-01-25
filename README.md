@@ -14,7 +14,7 @@ DockerHub: shrodingerzhu/csc3050
 ## How to run server?
 
 ```
-cargo run -- -t test.json -i csc3050 -l 0.0.0.0 -p8080
+RUST_LOG=info cargo run -- -t test.json -i csc3050 -l 0.0.0.0 -p8080
 ```
 
 ## How to run client?
