@@ -1,4 +1,10 @@
+#!/usr/bin/env python3
 import websocket
+try:
+    import thread
+except ImportError:
+    import _thread as thread
+import time
 import sys
 
 class COLORS:
@@ -12,20 +18,30 @@ class COLORS:
     BOLD = '\033[1m'
     UNDERLINE = '\033[4m'
 
+def on_open(ws):
+    print("connection is open")
+    with open(sys.argv[1], 'rb') as file:
+        data = file.read()
+    def run(ws, data):
+        time.sleep(1)
+        ws.send(data, websocket.ABNF.OPCODE_BINARY)
+        print("file sent, waiting for response")
+    thread.start_new_thread(run, (ws, data))
 
-ws = websocket.WebSocket()
-ws.connect(sys.argv[2])
-with open(sys.argv[1], 'rb') as file:
-    data = file.read()
+def on_error(ws, error):
+    print(COLORS.WARNING + error + COLORS.ENDC)
 
-ws.send_binary(data)
-
-while True:
-    result = ws.recv()
-    if result and result[0] == '[':
-        print(COLORS.OKGREEN + COLORS.BOLD + result + COLORS.ENDC)
-    elif result == "Finished":
-        print(COLORS.OKBLUE + COLORS.BOLD + result + COLORS.ENDC)
-        break
+def on_message(ws, msg):
+    if msg and msg[0] == '[':
+        print(COLORS.OKGREEN + COLORS.BOLD + msg + COLORS.ENDC)
+    elif msg == "Finished":
+        print(COLORS.OKBLUE + COLORS.BOLD + msg + COLORS.ENDC)
+        ws.close()
     else:
-        print(result)
+        print(msg)
+
+
+if __name__ == "__main__":
+    ws = websocket.WebSocketApp(sys.argv[2], on_message = on_message, on_error = on_error)
+    ws.on_open = on_open
+    ws.run_forever()
