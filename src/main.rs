@@ -107,6 +107,7 @@ impl Runner {
             .arg("/tmp")
             .arg(self.docker.as_ref().unwrap())
             .arg("cmake")
+            .arg(".")
             .arg("-DCMAKE_BUILD_TYPE=Release")
             .output()?;
         ctx.text(String::from_utf8(cmake.stdout)?);

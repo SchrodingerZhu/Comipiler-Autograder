@@ -1,7 +1,7 @@
 import websocket
 import sys
 ws = websocket.WebSocket()
-ws.connect("ws://127.0.0.1:8080")
+ws.connect(sys.argv[2])
 with open(sys.argv[1], 'rb') as file:
     data = file.read()
     

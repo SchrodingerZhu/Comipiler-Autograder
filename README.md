@@ -9,7 +9,7 @@
 
 ## Where to find the docker used by this repo?
 
-DockerHub: Shrodingerzhu/csc3050
+DockerHub: shrodingerzhu/csc3050
 
 ## How to run server?
 
