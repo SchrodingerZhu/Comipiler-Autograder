@@ -128,6 +128,8 @@ impl Runner {
             .arg(self.docker.as_ref().ok_or(anyhow!("illegal operation"))?)
             .arg("cmake")
             .arg(".")
+            .arg("-G")
+            .arg("Ninja")
             .arg("-DCMAKE_BUILD_TYPE=Release")
             .output()?;
         ctx.text(String::from_utf8(cmake.stdout)?);
@@ -339,7 +341,6 @@ impl<'a> StreamHandler<Result<ws::Message, ws::ProtocolError>> for Runner {
                 ctx.close(None);
             }
             _ => {
-                error!("illegal format {:#?}", msg);
                 ctx.close(None);
             }
         }
