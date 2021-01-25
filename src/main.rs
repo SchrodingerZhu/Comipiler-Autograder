@@ -282,8 +282,7 @@ impl<'a> StreamHandler<Result<ws::Message, ws::ProtocolError>> for Runner {
 }
 
 async fn index(req: HttpRequest, stream: web::Payload) -> Result<HttpResponse, Error> {
-    let image = "csc3050";
-    let actor = Runner { image: image.to_string(), test_cases: TESTS.clone(), file_path: None, docker: None, checksum: None };
+    let actor = Runner { image: CONF.image.clone(), test_cases: TESTS.clone(), file_path: None, docker: None, checksum: None };
     let mut res = ws::handshake(&req)?;
     let resp = res.streaming(WebsocketContext::with_codec(actor, stream, actix_http::ws::Codec::new().max_size(512 * 1024 * 1024)));
     println!("{:?}", resp);
@@ -295,7 +294,13 @@ type TestCases = Vec<TestCase>;
 #[derive(structopt::StructOpt)]
 struct Config {
     #[structopt(short, long, about="path to the json file containing test cases")]
-    tests: PathBuf
+    tests: PathBuf,
+    #[structopt(short, long, about="docker image name")]
+    image: String,
+    #[structopt(short="l", long, about="listen ip")]
+    ip: std::net::IpAddr,
+    #[structopt(short, long, about="listen port")]
+    port: u8,
 }
 
 #[actix_web::main]
@@ -303,7 +308,7 @@ async fn main() -> std::io::Result<()> {
     pretty_env_logger::init_timed();
     info!("tests from: {}, size: {}", CONF.tests.display(), TESTS.len());
     HttpServer::new(|| App::new().route("/", web::get().to(index)))
-        .bind("127.0.0.1:8080")?
+        .bind(format!("{}:{}", CONF.ip, CONF.port))?
         .run()
         .await
 }
