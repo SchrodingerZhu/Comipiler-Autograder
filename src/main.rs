@@ -303,7 +303,7 @@ async fn index(req: HttpRequest, stream: web::Payload) -> Result<HttpResponse, E
         score: 0,
     };
     let mut res = ws::handshake(&req)?;
-    let resp = res.streaming(WebsocketContext::with_codec(actor, stream, actix_http::ws::Codec::new().max_size(512 * 1024 * 1024)));
+    let resp = res.streaming(WebsocketContext::with_codec(actor, stream, actix_http::ws::Codec::new().max_size(64 * 1024 * 1024)));
     println!("{:?}", resp);
     Ok(resp)
 }
