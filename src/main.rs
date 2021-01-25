@@ -228,6 +228,14 @@ impl Runner {
         let flag = result.trim() == c.trim();
         if flag {
             self.score = self.score + i.score;
+        } else {
+
+            let exp = &c.trim()[0..256.min(c.trim().len())];
+            let real = &result.trim()[0..256.min(result.trim().len())];
+            ctx.text("expected [up to 256 bytes]: ");
+            ctx.text(exp);
+            ctx.text("real output [up to 256 bytes]:");
+            ctx.text(real);
         }
         let report = &mut self.report;
         report.push_str(format!("test {}, score: {}, success: {}\n", i.name, i.score, flag).as_str());
