@@ -300,7 +300,7 @@ struct Config {
     #[structopt(short="l", long, about="listen ip")]
     ip: std::net::IpAddr,
     #[structopt(short, long, about="listen port")]
-    port: u8,
+    port: u16,
 }
 
 #[actix_web::main]
