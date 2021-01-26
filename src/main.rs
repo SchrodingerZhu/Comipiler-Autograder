@@ -151,7 +151,11 @@ impl Runner {
         ctx.text("[build stderr]");
         ctx.text(String::from_utf8(build.stderr)?);
         self.status = Status::Run(0);
-        Ok(())
+        if !untar.status.success() || !cmake.status.success() || !build.status.success() {
+            Err(anyhow!("compile"))
+        } else {
+            Ok(())
+        }
     }
 
     fn run_cases(&mut self, ctx: &mut <Self as Actor>::Context) -> anyhow::Result<()> {
@@ -229,13 +233,14 @@ impl Runner {
         if flag {
             self.score = self.score + i.score;
         } else {
-
-            let exp = &c.trim()[0..256.min(c.trim().len())];
-            let real = &result.trim()[0..256.min(result.trim().len())];
-            ctx.text("expected [up to 256 bytes]: ");
-            ctx.text(exp);
-            ctx.text("real output [up to 256 bytes]:");
-            ctx.text(real);
+            ctx.text(format!("[{} output differences]", i.name));
+            for diff in diff::lines(c.trim(), result.trim()) {
+                match diff {
+                    diff::Result::Left(l) => ctx.text(format!("- {}", l)),
+                    diff::Result::Both(l, _) => ctx.text(format!("  {}", l)),
+                    diff::Result::Right(r) => ctx.text(format!("+ {}", r))
+                }
+            }
         }
         let report = &mut self.report;
         report.push_str(format!("test {}, score: {}, success: {}\n", i.name, i.score, flag).as_str());
@@ -252,6 +257,9 @@ impl Runner {
 
     fn gpg(&mut self, ctx: &mut <Self as Actor>::Context) -> anyhow::Result<()> {
         ctx.text("[gpg report]");
+        self.report.push_str("datetime: ");
+        self.report.push_str(chrono::Local::now().to_string().as_str());
+        self.report.push('\n');
         self.report.push_str(format!("total score: {}\n", self.score).as_str());
         self.report.push_str("file checksum: ");
         self.report.push_str(self.checksum.as_ref().ok_or(anyhow!("illegal operation"))?);
@@ -330,6 +338,7 @@ impl<'a> StreamHandler<Result<ws::Message, ws::ProtocolError>> for Runner {
                     Status::Run(_) => self.run_cases(ctx),
                     Status::GPG => self.gpg(ctx),
                     Status::Finished => {
+                        ctx.text("Finished");
                         ctx.close(None);
                         self.clean_up();
                         Ok(())
