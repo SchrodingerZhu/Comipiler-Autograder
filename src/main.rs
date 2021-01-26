@@ -385,13 +385,13 @@ type TestCases = Vec<TestCase>;
 
 #[derive(structopt::StructOpt)]
 struct Config {
-    #[structopt(short, long, about = "path to the json file containing test cases")]
+    #[structopt(short, long, help = "Path to the json file containing test cases")]
     tests: PathBuf,
-    #[structopt(short, long, about = "docker image name")]
+    #[structopt(short, long, help = "Docker image name")]
     image: String,
-    #[structopt(short = "l", long, about = "listen ip")]
+    #[structopt(short = "l", long, help = "Listen IP address")]
     ip: std::net::IpAddr,
-    #[structopt(short, long, about = "listen port")]
+    #[structopt(short, long, help = "Listen port")]
     port: u16,
 }
 
