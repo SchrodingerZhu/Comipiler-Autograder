@@ -23,5 +23,5 @@ RUST_LOG=info cargo run -- -t test.json -i csc4180 -l 0.0.0.0 -p8080
 ```
 # pip3 install websocket_client
 tar cvzf src.tgz YOUR_SRC_PATH/* # yes, CMakeLists.txt directly in the archive, rather than in any subdirectory
-./client src.tgz ws://ip:port
+./client src.tgz ws://ip:port [cmake] # add cmake flag if you want to use cmake instead of make
 ```

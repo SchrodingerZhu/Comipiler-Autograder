@@ -15,24 +15,10 @@
   },
   {
     "name": "simple2",
-    "source": "tests/1.s",
-    "input_file": "tests/1.i",
-    "output_file": "tests/1.out",
-    "score": 10
-  },
-  {
-    "name": "simple3",
-    "source": "tests/1.s",
-    "input_file": "tests/1.i",
-    "output_file": "tests/1.out",
-    "score": 10
-  },
-  {
-    "name": "simple4",
-    "source": "tests/1.s",
-    "input_file": "tests/1.i",
-    "output_file": "tests/1.out",
-    "score": 10
+    "source": "tests/2.s",
+    "input_file": "tests/2.i",
+    "output_file": "tests/2.out",
+    "score": 20
   }
 
 ]

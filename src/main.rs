@@ -14,6 +14,7 @@ use lazy_static::*;
 use structopt::StructOpt;
 use anyhow::*;
 use std::process::Stdio;
+use crate::Tool::{CMake, Make};
 
 lazy_static! {
     static ref CONF : Config = Config::from_args();
@@ -32,6 +33,11 @@ enum Status {
     Finished,
 }
 
+#[derive(Ord, PartialOrd, PartialEq, Eq)]
+enum Tool {
+    CMake,
+    Make
+}
 /// Define HTTP actor
 struct Runner {
     image: String,
@@ -42,6 +48,7 @@ struct Runner {
     report: String,
     score: usize,
     status: Status,
+    tool: Tool
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -120,38 +127,50 @@ impl Runner {
             .arg("src.tgz")
             .output()?;
         ctx.text(format!("finished with {}", untar.status));
-        ctx.text("[run cmake]");
-        let cmake = std::process::Command::new("docker")
-            .arg("exec")
-            .arg("-w")
-            .arg("/tmp")
-            .arg(self.docker.as_ref().ok_or(anyhow!("illegal operation"))?)
-            .arg("cmake")
-            .arg(".")
-            .arg("-G")
-            .arg("Ninja")
-            .arg("-DCMAKE_BUILD_TYPE=Release")
-            .output()?;
-        ctx.text(String::from_utf8(cmake.stdout)?);
-        ctx.text("[cmake stderr]");
-        ctx.text(String::from_utf8(cmake.stderr)?);
-        ctx.text("[build]");
-        let build = std::process::Command::new("docker")
-            .arg("exec")
-            .arg("-w")
-            .arg("/tmp")
-            .arg(self.docker.as_ref().ok_or(anyhow!("illegal operation"))?)
-            .arg("cmake")
-            .arg("--build")
-            .arg(".")
-            .arg("--parallel")
-            .arg("4")
-            .output()?;
+        let build = if self.tool == CMake {
+            ctx.text("[run cmake]");
+            let cmake = std::process::Command::new("docker")
+                .arg("exec")
+                .arg("-w")
+                .arg("/tmp")
+                .arg(self.docker.as_ref().ok_or(anyhow!("illegal operation"))?)
+                .arg("cmake")
+                .arg(".")
+                .arg("-G")
+                .arg("Ninja")
+                .arg("-DCMAKE_BUILD_TYPE=Release")
+                .output()?;
+            ctx.text(String::from_utf8(cmake.stdout)?);
+            ctx.text("[cmake stderr]");
+            ctx.text(String::from_utf8(cmake.stderr)?);
+            ctx.text("[build]");
+            std::process::Command::new("docker")
+                .arg("exec")
+                .arg("-w")
+                .arg("/tmp")
+                .arg(self.docker.as_ref().ok_or(anyhow!("illegal operation"))?)
+                .arg("cmake")
+                .arg("--build")
+                .arg(".")
+                .arg("--parallel")
+                .arg("4")
+                .output()?
+        } else {
+            std::process::Command::new("docker")
+                .arg("exec")
+                .arg("-w")
+                .arg("/tmp")
+                .arg(self.docker.as_ref().ok_or(anyhow!("illegal operation"))?)
+                .arg("make")
+                .arg("-j")
+                .arg("4")
+                .output()?
+        };
         ctx.text(String::from_utf8(build.stdout)?);
         ctx.text("[build stderr]");
         ctx.text(String::from_utf8(build.stderr)?);
         self.status = Status::Run(0);
-        if !untar.status.success() || !cmake.status.success() || !build.status.success() {
+        if !untar.status.success() || !build.status.success() {
             Err(anyhow!("compile"))
         } else {
             Ok(())
@@ -331,6 +350,12 @@ impl<'a> StreamHandler<Result<ws::Message, ws::ProtocolError>> for Runner {
                     self.clean_up();
                 }
             }
+            Ok(ws::Message::Text(tool)) => {
+                match tool.as_str() {
+                    "cmake" => self.tool = CMake,
+                    _ => self.tool = Make
+                }
+            }
             Ok(ws::Message::Pong(_)) => {
                 let result = match self.status {
                     Status::Docker => self.start_docker(ctx),
@@ -374,6 +399,7 @@ async fn index(req: HttpRequest, stream: web::Payload) -> Result<HttpResponse, E
         report: String::new(),
         score: 0,
         status: Status::Start,
+        tool: Tool::Make
     };
     let mut res = ws::handshake(&req)?;
     let resp = res.streaming(WebsocketContext::with_codec(actor, stream, actix_http::ws::Codec::new().max_size(64 * 1024 * 1024)));
